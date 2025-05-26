@@ -1,5 +1,7 @@
 # node_modules 폴더 무시 (frontend, backend 모두 포함)
 **/node_modules/
+**/.pnp
+**/.pnp.js
 
 # 환경 변수 파일 무시 (각 폴더의 .env 포함)
 **/*.env
@@ -15,3 +17,6 @@ backend/build/
 
 # MacOS 시스템 파일 무시 (필요시)
 .DS_Store
+
+# 테스트
+/coverage
