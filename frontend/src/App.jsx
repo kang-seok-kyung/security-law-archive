@@ -1,6 +1,8 @@
-import React from 'react'; // 16 이하 구버전 react일 경우 필요
+// src/App.jsx
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-
+import SearchPage from './pages/SearchPage';
+import StatsPage from './pages/StatsPage';
 
 function App() {
   return (
@@ -14,6 +16,11 @@ function App() {
         <Link to="/" style={{ marginRight: '20px', textDecoration: 'none', fontWeight: 'bold' }}>🔍 판례 검색</Link>
         <Link to="/stats" style={{ textDecoration: 'none', fontWeight: 'bold' }}>📊 통계 보기</Link>
       </div>
+
+      <Routes>
+        <Route path="/" element={<SearchPage />} />
+        <Route path="/stats" element={<StatsPage />} />
+      </Routes>
     </Router>
   );
 }
