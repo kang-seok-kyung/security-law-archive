@@ -1,7 +1,7 @@
 from db import db
-from config import COLLECTION_NAME
+from config import COLLECTION_NAME1
 
-collection = db[COLLECTION_NAME]
+collection = db[COLLECTION_NAME1]
 
 
 def insert_precedents(data_list):

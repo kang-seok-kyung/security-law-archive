@@ -1,9 +1,9 @@
 from flask import Blueprint, request, jsonify
 from db import db
-from config import COLLECTION_NAME
+from config import COLLECTION_NAME1
 
 bp = Blueprint("precedents", __name__, url_prefix="/api/precedents")
-collection = db[COLLECTION_NAME]
+collection = db[COLLECTION_NAME1]
 
 @bp.route("", methods=["POST"])
 def insert_precedent():
