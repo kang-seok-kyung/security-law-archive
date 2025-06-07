@@ -4,7 +4,7 @@ from services.precedent_service import find_by_laws, find_by_id
 bp = Blueprint("precedents", __name__, url_prefix="/api/precedents")
 
 @bp.route("", methods=["GET"])
-def get_precedents_by_law():
+def get_precedents_by_jo():
     laws = request.args.getlist("law")
     if not laws:
         return jsonify({"error": "law 파라미터가 필요합니다."}), 400

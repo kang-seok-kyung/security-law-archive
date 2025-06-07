@@ -9,11 +9,11 @@ def count_precedents_by_year():
     result = defaultdict(int)
     for doc in col_prec.find({}, {"date": 1}):
         year = str(doc.get("date", "")[:4])
-        if year:
+        if year.isdigit() and int(year) >= 1900:
             result[year] += 1
     return dict(result)
 
-def count_incidents_by_year():
+def count_cases_by_year():
     result = defaultdict(int)
     for doc in col_case.find({}, {"date": 1}):
         year = str(doc.get("date", "")[:4])

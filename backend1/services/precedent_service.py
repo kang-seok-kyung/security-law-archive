@@ -5,6 +5,12 @@ col = db[COLLECTION_NAME1]
 
 def insert_precedents(data):
     for doc in data:
+        existing = col.find_one({"id": doc["id"]})
+        if existing:
+            existing_jo = existing.get("jo", [])
+            new_jo = doc.get("jo", [])
+            merged_jo = list(set(existing_jo + new_jo))
+            doc["jo"] = merged_jo
         col.update_one({"id": doc["id"]}, {"$set": doc}, upsert=True)
 
 def find_by_laws(laws):

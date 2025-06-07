@@ -37,9 +37,9 @@ def fetch_by_jo(jo):
         data = res.json()
         precs = data.get("PrecSearch", {}).get("prec", [])
 
-        # ⚠️ 방어: precs가 리스트가 아니면 중단
-        if not isinstance(precs, list):
-            print(f"[⚠️] {jo} - prec 응답이 list가 아님: {precs}")
+        if isinstance(precs, dict):
+            precs = [precs]
+        elif not isinstance(precs, list):
             break
 
         for p in precs:
@@ -59,8 +59,12 @@ def fetch_by_jo(jo):
         page += 1
     return all_data
 
-if __name__ == "__main__":
+def update_precedents():
     for law in SECURITY_LAWS:
         data = fetch_by_jo(law)
         insert_precedents(data)
         print(f"[✔] {law} 기준 {len(data)}건 저장 완료")
+
+# python -m ingest.ingest로 실행할 때 동작
+if __name__ == "__main__":
+    update_precedents()
