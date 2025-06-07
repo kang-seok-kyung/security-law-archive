@@ -31,4 +31,4 @@ def replace_json_in_mongodb(json_path, collection_name):
 
 if __name__ == "__main__":
     # 예시: summarized_news.json → cases 컬렉션에 전체 덮어쓰기
-    replace_json_in_mongodb("summarized_news.json", config.COLLECTION_NAME2)
+    replace_json_in_mongodb("boan_news_summarized.json", config.COLLECTION_NAME2)

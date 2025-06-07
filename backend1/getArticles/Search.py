@@ -1,131 +1,277 @@
 import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from tqdm import tqdm
 import json
-import random
-from datetime import datetime
-from newspaper import Article
-from html import unescape
-import re
 import time
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
+from transformers import PreTrainedTokenizerFast, BartForConditionalGeneration
+from datetime import datetime
 
-# 네이버 API 인증 정보
-CLIENT_ID = 'UB1qHeQaFgZufKcwAsb7'
-CLIENT_SECRET = '6CmWWur5bw'
+# ===== 설정 =====
+BASE_URL = "https://www.boannews.com"
+START_URL = "https://www.boannews.com/search/news_hash.asp?find=%BB%E7%B0%C7%BB%E7%B0%ED"
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+RAW_SAVE = "boan_news_raw.json"
+SUMMARY_SAVE = "boan_news_summarized.json"
 
-# 검색어 관련 설정
-SEARCH_QUERIES = [
-    "사이버 보안 사고", "개인정보 유출", "해킹 사건", "랜섬웨어 감염",
-    "DDoS 공격", "정보보호 침해", "사이버 공격 사례", "보안 사고 사례"
+# ===== 추정 가능한 한국 법률 목록 =====
+import torch
+
+LAW_LIST = [
+    "개인정보보호법",
+    "정보통신망법",
+    "통신비밀보호법",
+    "정보보호산업법",
+    "전자금융거래법",
+    "사이버보안기본법(안)",
+    "국가정보화기본법"
 ]
-DISPLAY_PER_PAGE = 100
-MAX_RESULTS = 1000
 
-# 표현 패턴 기반 필터링 추가
-SECURITY_KEYWORDS = ['해킹', '개인정보', '유출', 'DDoS', '랜섬웨어', '사이버 공격', '보안 취약점', '정보보호']
-INCIDENT_PATTERNS = ['사고', '유출', '공격', '피해', '감염', '조사 중', '조사에 착수', '벌금', '피해 규모', '사건', '사건이 발생']
+# 예시 가중치 사전 (키워드: {법률: 가중치})
+KEYWORD_WEIGHTS = {
+    # 개인정보보호법 관련
+    "개인정보 유출": {"개인정보보호법": 0.25},
+    "개인정보": {"개인정보보호법": 0.15},
+    "주민등록번호": {"개인정보보호법": 0.2},
+    "고객 정보": {"개인정보보호법": 0.2},
+    "이름, 주소": {"개인정보보호법": 0.1},
+    "휴대전화번호": {"개인정보보호법": 0.15},
+    "의료 정보": {"개인정보보호법": 0.25},
+    "유출 사고": {"개인정보보호법": 0.15},
+    "유출": {
+        "개인정보보호법": 0.20,
+        "정보통신망법": 0.10,
+        "국가정보화기본법": 0.10
+    },
 
-def is_real_incident(text):
-    # 보안 키워드 + 사건성 표현 둘 다 포함된 경우만 True
-    return any(k in text for k in SECURITY_KEYWORDS) and any(p in text for p in INCIDENT_PATTERNS)
+    # 정보통신망법 관련
+    "해킹": {"정보통신망법": 0.2, "통신비밀보호법": 0.15},
+    "랜섬웨어": {"정보통신망법": 0.25, "사이버보안기본법(안)": 0.2},
+    "디도스": {"정보통신망법": 0.2, "사이버보안기본법(안)": 0.15},
+    "DDoS": {
+        "사이버보안기본법(안)": 0.25,
+        "정보통신망법": 0.15,
+        "정보통신기반보호법": 0.15
+    },
+    "백도어": {"정보통신망법": 0.2},
+    "웹쉘": {"정보통신망법": 0.15},
+    "악성코드": {"정보통신망법": 0.2},
 
+    # 통신비밀보호법 관련
+    "감청": {"통신비밀보호법": 0.25},
+    "도청": {"통신비밀보호법": 0.25},
+    "패킷 분석": {"통신비밀보호법": 0.2},
+    "트래픽 가로채기": {"통신비밀보호법": 0.2},
 
+    # 전자금융거래법 관련
+    "전자금융": {"전자금융거래법": 0.25},
+    "금융 사고": {"전자금융거래법": 0.15},
+    "피싱": {"전자금융거래법": 0.25, "정보통신망법": 0.15},
+    "스미싱": {
+        "개인정보보호법": 0.15,
+        "전자금융거래법": 0.20,
+        "통신비밀보호법": 0.10
+    },
+    "계좌 탈취": {"전자금융거래법": 0.2},
+    "OTP": {"전자금융거래법": 0.15},
+    "가상자산": {"전자금융거래법": 0.15},
+    "결제": {
+        "전자금융거래법": 0.20,
+        "전자문서 및 전자거래 기본법": 0.15,
+        "개인정보보호법": 0.10
+    },
+    "금융": {
+        "전자금융거래법": 0.25,
+        "개인정보보호법": 0.10
+    },
+    "금융정보": {
+        "전자금융거래법": 0.20,
+        "개인정보보호법": 0.15,
+        "신용정보의이용및보호에관한법률": 0.20
+    },
 
-def naver_news_search(query, display=100, start=1):
-    url = "https://openapi.naver.com/v1/search/news.json"
-    headers = {
-        'X-Naver-Client-Id': CLIENT_ID,
-        'X-Naver-Client-Secret': CLIENT_SECRET
+    # 사이버보안기본법(안) 관련
+    "사이버 공격": {"사이버보안기본법(안)": 0.2},
+    "보안 취약점": {"사이버보안기본법(안)": 0.15},
+    "제로데이": {"사이버보안기본법(안)": 0.2},
+    "APT": {"사이버보안기본법(안)": 0.2},
+    "침해 사고": {"사이버보안기본법(안)": 0.2},
+    "C2 서버": {"사이버보안기본법(안)": 0.2},
+
+    # 국가정보화기본법 관련
+    "국가 정보": {"국가정보화기본법": 0.15},
+    "행정망": {"국가정보화기본법": 0.2},
+    "공공기관 시스템": {"국가정보화기본법": 0.2},
+
+    # 정보보호산업법 관련
+    "보안 솔루션": {"정보보호산업법": 0.15},
+    "정보보호 제품": {"정보보호산업법": 0.15},
+    "보안 기업": {"정보보호산업법": 0.15},
+
+    # 기타 키워드
+    "인증서 탈취": {"전자금융거래법": 0.2, "정보통신망법": 0.15},
+    "디지털 증명서": {"전자금융거래법": 0.15},
+    "딥페이크": {
+        "정보통신망법": 0.20,
+        "통신비밀보호법": 0.10,
+        "개인정보보호법": 0.15
+    },
+    "도박 사이트": {
+        "정보통신망법": 0.20,
+        "사이버보안기본법(안)": 0.15
     }
-    params = {
-        'query': query,
-        'display': display,
-        'start': start,
-        'sort': 'sim'
-    }
-    response = requests.get(url, headers=headers, params=params)
-    if response.status_code == 200:
-        return response.json()
+}
+
+def apply_keyword_weights(text, base_probs):
+    scores = base_probs.clone()
+    text_lower = text.lower()
+    
+    triggered_keywords = set()
+
+    for keyword, law_weights in KEYWORD_WEIGHTS.items():
+        if keyword in text_lower:
+            triggered_keywords.add(keyword)
+
+    for keyword in triggered_keywords:
+        for law, weight in KEYWORD_WEIGHTS[keyword].items():
+            if law in LAW_LIST:
+                idx = LAW_LIST.index(law)
+                scores[idx] += weight
+
+    total = scores.sum().item()
+    if total > 0:
+        scores /= total
     else:
-        print(f"API Error: {response.status_code}")
-        return None
+        scores = base_probs
 
-def clean_html(text):
-    text = re.sub('<.*?>', '', text)
-    return unescape(text)
+    return scores
 
-def extract_article_text(url):
+def classify_laws(text, tokenizer, model, top_k=1, threshold=0.1):
+    inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+    with torch.no_grad():
+        outputs = model(**inputs)
+        base_probs = torch.softmax(outputs.logits, dim=1)[0]
+    
+    # 키워드 가중치 반영 및 정규화
+    weighted_probs = apply_keyword_weights(text, base_probs)
+
+    # 가장 높은 확률의 법률 하나 추출
+    top_index = weighted_probs.argmax().item()
+    top_prob = weighted_probs[top_index]
+    
+    if top_prob > threshold:
+        return LAW_LIST[top_index]
+    else:
+        return "미분류"
+
+# ===== 뉴스 리스트 수집 =====
+def get_article_list(page=1):
+    url = f"{START_URL}&Page={page}"
+    resp = requests.get(url, headers=HEADERS, verify=False)
+    resp.encoding = 'euc-kr'
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    articles = []
+    for item in soup.select("div.news_list"):
+        title = item.select_one("span.news_txt")
+        date = item.select_one("span.news_writer")
+        link = item.select_one("a[href^='/media/view.asp']")
+        if title and date and link:
+            # 원본: "기자명 | 2024년 10월 28일 13:39"
+            raw_date = date.get_text(strip=True).split('|')[-1].strip()
+            try:
+                parsed_date = datetime.strptime(raw_date, "%Y년 %m월 %d일 %H:%M")
+                formatted_date = parsed_date.strftime("%Y.%m.%d")
+            except ValueError:
+                # 예외 발생 시 원본 그대로 사용
+                formatted_date = raw_date
+            articles.append({
+                "title": title.get_text(strip=True),
+                "date": formatted_date,
+                "uri": urljoin(BASE_URL, link['href']),
+            })
+    return articles
+
+# ===== 뉴스 본문 수집 =====
+def get_article_content(url):
     try:
-        article = Article(url, language='ko')
-        article.download()
-        article.parse()
-        return article.text.strip()
+        res = requests.get(url, headers=HEADERS, verify=False)
+        res.encoding = "euc-kr"
+        soup = BeautifulSoup(res.text, "html.parser")
+        content_div = soup.select_one("div#news_content")
+        if content_div:
+            content = content_div.get_text(separator="\n").strip()
+        else:
+            print(f"[!] 본문 태그가 없습니다: {url}")
+            content = ""
     except Exception as e:
-        print(f"[본문 추출 실패] {url} → {e}")
-        return ""
+        print(f"[ERROR] {url} - {e}")
+    return content
 
-def is_security_incident(text):
-    return any(keyword in text for keyword in SECURITY_KEYWORDS)
+# ===== 전체 뉴스 수집 =====
+def crawl_boannews(pages=2):
+    all_articles = []
+    for page in range(1, pages+1):
+        print(f"\n📄 Fetching Page {page}")
+        articles = get_article_list(page)
+        for article in tqdm(articles, desc="📥 Downloading Articles"):
+            content = get_article_content(article['uri'])
+            article["content"] = content
+            time.sleep(0.1)
+        all_articles.extend(articles)
+    return all_articles
 
-def format_date(pub_date_str):
-    try:
-        dt = datetime.strptime(pub_date_str, '%a, %d %b %Y %H:%M:%S %z')
-        return dt.strftime('%Y-%m-%d')
-    except:
-        return pub_date_str
+# ===== KoBART 요약기 =====
+def load_summarizer():
+    tokenizer = PreTrainedTokenizerFast.from_pretrained("digit82/kobart-summarization")
+    model = BartForConditionalGeneration.from_pretrained("digit82/kobart-summarization")
+    return tokenizer, model
 
+def summarize(text, tokenizer, model):
+    input_ids = tokenizer.encode(text[:1024], return_tensors="pt", truncation=True)
+    summary_ids = model.generate(input_ids, max_length=128, num_beams=4, early_stopping=True)
+    return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
+# ===== 법률 분류기 로딩 =====
+def load_law_classifier():
+    tokenizer = BertTokenizer.from_pretrained("klue/roberta-base")
+    model = BertForSequenceClassification.from_pretrained("klue/roberta-base", num_labels=len(LAW_LIST))
+    model.eval()
+    return tokenizer, model
 
-def extract_article_title(url):
-    try:
-        article = Article(url, language='ko')
-        article.download()
-        article.parse()
-        return article.title.strip()
-    except Exception as e:
-        print(f"[타이틀 추출 실패] {url} → {e}")
-        return None
+# ===== 메인 파이프라인 =====
+def main():
+    print("🚀 보안뉴스 수집 및 AI 요약/법률 분석 시작")
+    
+    # 1. 뉴스 수집
+    news_data = crawl_boannews(pages=4)
+    with open(RAW_SAVE, "w", encoding="utf-8") as f:
+        json.dump(news_data, f, ensure_ascii=False, indent=2)
+    print(f"✅ 뉴스 원문 {len(news_data)}건 저장: {RAW_SAVE}")
 
-def crawl_news(n=100):
-    all_items = []
+    # 2. 요약기/법률 분류기 로드
+    tokenizer_kobart, model_kobart = load_summarizer()
+    law_tokenizer, law_model = load_law_classifier()
 
-    for query in SEARCH_QUERIES:
-        starts = list(range(1, MAX_RESULTS + 1, DISPLAY_PER_PAGE))
-        random.shuffle(starts)
-        for start_pos in starts:
-            data = naver_news_search(query, DISPLAY_PER_PAGE, start_pos)
-            if data and 'items' in data:
-                for item in data['items']:
-                    news = {
-                        'title': clean_html(item['title']),
-                        'date': format_date(item['pubDate']),
-                        'uri': item['link']
-                    }
-                    all_items.append(news)
-            time.sleep(0.2)
-            if len(all_items) > n * 3:
-                break
+    # 3. 처리
+    summarized = []
+    print("\n✍ 요약 및 법률 추출 중...")
+    for article in tqdm(news_data):
+        summary = summarize(article["content"], tokenizer_kobart, model_kobart)
+        laws = classify_laws(article["content"], law_tokenizer, law_model)
+        summarized.append({
+            "title": article["title"],
+            "date": article["date"],
+            "uri": article["uri"],
+            "summary": summary,
+            "related_laws": laws
+        })
 
-    # 중복 제거
-    all_items = list({item['uri']: item for item in all_items}.values())
-    random.shuffle(all_items)
-
-    # 본문 파싱 및 필터링
-    filtered_news = []
-    for item in all_items:
-        content = extract_article_text(item['uri'])
-        if is_real_incident(content):
-            item['content'] = content
-            filtered_news.append(item)
-        if len(filtered_news) >= n:
-            break
-
-    return filtered_news
-
-def save_to_json(data, filename='filtered_news.json'):
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    # 4. 저장
+    with open(SUMMARY_SAVE, "w", encoding="utf-8") as f:
+        json.dump(summarized, f, ensure_ascii=False, indent=2)
+    print(f"🎉 최종 요약 및 법률 분석 결과 저장 완료: {SUMMARY_SAVE}")
 
 if __name__ == "__main__":
-    N = 100  # 기본 수량
-    news = crawl_news(N)
-    save_to_json(news)
-    print(f"[완료] {len(news)}개의 보안 사고 관련 뉴스를 저장했습니다.")
+    main()
