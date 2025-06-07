@@ -1,16 +1,19 @@
 from flask import Blueprint, request, jsonify
-from db import db
-from config import COLLECTION_NAME1
+from services.precedent_service import find_by_laws, find_by_id
 
 bp = Blueprint("precedents", __name__, url_prefix="/api/precedents")
-collection = db[COLLECTION_NAME1]
 
-@bp.route("", methods=["POST"])
-def insert_precedent():
-    data = request.get_json()
+@bp.route("", methods=["GET"])
+def get_precedents_by_law():
+    laws = request.args.getlist("law")
+    if not laws:
+        return jsonify({"error": "law 파라미터가 필요합니다."}), 400
+    results = find_by_laws(laws)
+    return jsonify(results)
 
-    if not data:
-        return jsonify({"error": "No input data provided"}), 400
-
-    inserted = collection.insert_one(data)
-    return jsonify({"message": "Inserted", "id": str(inserted.inserted_id)}), 201
+@bp.route("/<precedent_id>", methods=["GET"])
+def get_precedent_detail(precedent_id):
+    result = find_by_id(precedent_id)
+    if not result:
+        return jsonify({"error": "판례를 찾을 수 없습니다."}), 404
+    return jsonify(result)
