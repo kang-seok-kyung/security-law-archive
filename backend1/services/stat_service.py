@@ -20,5 +20,5 @@ def count_cases_by_law():
         if isinstance(laws, str):
             laws = [laws]
         for law in laws:
-            result[law] += 1
+            result[law] += 1 
     return dict(result)
