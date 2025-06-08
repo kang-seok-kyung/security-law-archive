@@ -13,10 +13,12 @@ def count_precedents_by_year():
             result[year] += 1
     return dict(result)
 
-def count_cases_by_year():
+def count_cases_by_law():
     result = defaultdict(int)
-    for doc in col_case.find({}, {"date": 1}):
-        year = str(doc.get("date", "")[:4])
-        if year:
-            result[year] += 1
+    for doc in col_case.find({}, {"related_laws": 1}):
+        laws = doc.get("related_laws", [])
+        if isinstance(laws, str):
+            laws = [laws]
+        for law in laws:
+            result[law] += 1
     return dict(result)
