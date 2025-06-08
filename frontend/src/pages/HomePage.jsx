@@ -1,26 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import NewsCard from '../components/NewsCard';
+import { useNavigate } from 'react-router-dom';
 
 function HomePage() {
-  const [newsList, setNewsList] = useState([]);
+  const [cases, setCases] = useState([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    axios.get('http://localhost:5000/news/summary')
-      .then(res => setNewsList(res.data))
-      .catch(err => console.error('뉴스 요약 API 오류:', err));
+    axios.get(`${process.env.REACT_APP_API_URL}/api/cases`)
+      .then(res => setCases(res.data))
+      .catch(err => console.error('사건 목록 불러오기 실패:', err));
   }, []);
 
   return (
-    <div style={{ padding: '40px', maxWidth: '800px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '20px' }}>📰 요약 뉴스</h1>
-      {newsList.length === 0 ? (
-        <p>뉴스를 불러오는 중입니다...</p>
-      ) : (
-        newsList.map((news) => (
-          <NewsCard key={news.id} news={news} />
-        ))
-      )}
+    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '40px' }}>
+      <h2>📰 보안 사건 사고 목록</h2>
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {cases.map((item) => (
+          <li
+            key={item._id}
+            onClick={() => navigate(`/incident/${item._id}`)}
+            style={{
+              border: '1px solid #ddd',
+              borderRadius: '10px',
+              padding: '20px',
+              marginBottom: '20px',
+              cursor: 'pointer',
+              backgroundColor: '#f9f9f9'
+            }}
+          >
+            <h3>{item.title}</h3>
+            <p style={{ color: '#777' }}>{item.date}</p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
