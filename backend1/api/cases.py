@@ -24,7 +24,18 @@ def get_case_detail(case_id):
     laws = case.get("related_laws", [])
     if isinstance(laws, str):
         laws = [laws]
-    precedents = list(precedents_col.find({"jo": {"$in": laws}}, {"_id": 0, "id": 1, "title": 1, "court": 1, "date": 1, "url": 1}))
+
+    grouped_precedents = {}
+    for law in laws:
+        precs = list(precedents_col.find(
+            {"jo": law},
+            {"_id": 0, "id": 1, "title": 1, "court": 1, "date": 1, "url": 1}
+        ))
+        if precs:
+            grouped_precedents[law] = precs
 
     case["_id"] = str(case["_id"])
-    return jsonify({"case": case, "related_precedents": precedents})
+    return jsonify({
+        "case": case,
+        "related_precedents": grouped_precedents
+    })
