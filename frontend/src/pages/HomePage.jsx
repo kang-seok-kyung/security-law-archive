@@ -7,16 +7,19 @@ function HomePage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-  axios.get(`${process.env.REACT_APP_API_URL}/api/cases`)
-    .then(res => {
-      console.log('응답 확인:', res.data);
-      setCases(res.data);
-    })
-    .catch(err => {
-      console.error('사건 목록 불러오기 실패:', err);
-    });
-}, []);
+    axios.get(`${process.env.REACT_APP_API_URL}/api/cases`)
+      .then(res => {
+        console.log('응답 확인:', res.data);
+        setCases(res.data);
+      })
+      .catch(err => {
+        console.error('사건 목록 불러오기 실패:', err);
+      });
+  }, []);
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '40px' }}>
@@ -40,6 +43,27 @@ function HomePage() {
           </li>
         ))}
       </ul>
+
+      {/* TOP 버튼 */}
+      <button
+        onClick={scrollToTop}
+        style={{
+          position: 'fixed',
+          bottom: '40px',
+          right: '40px',
+          padding: '12px 20px',
+          fontSize: '14px',
+          backgroundColor: '#007BFF',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+          cursor: 'pointer',
+          zIndex: 1000
+        }}
+      >
+        ⬆ TOP
+      </button>
     </div>
   );
 }

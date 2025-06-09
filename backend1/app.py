@@ -13,7 +13,5 @@ app.register_blueprint(cases_bp)
 app.register_blueprint(precedents_bp)
 app.register_blueprint(stats_bp)
 
-# 서버 실행 시 자동으로 판례 데이터 수집
 if __name__ == "__main__":
-    update_precedents()
     app.run()
