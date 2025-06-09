@@ -17,6 +17,10 @@ function IncidentDetailPage() {
       .catch(err => console.error('사건 상세 정보 불러오기 실패:', err));
   }, [id]);
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   if (!incident) return <p style={{ textAlign: 'center' }}>📄 사건 정보를 불러오는 중...</p>;
 
   return (
@@ -78,6 +82,27 @@ function IncidentDetailPage() {
           ))
         ) : <p style={{ color: '#777' }}>관련 판례 없음</p>}
       </section>
+
+      {/* ✅ TOP 버튼 */}
+      <button
+        onClick={scrollToTop}
+        style={{
+          position: 'fixed',
+          bottom: '40px',
+          right: '40px',
+          padding: '12px 20px',
+          fontSize: '14px',
+          backgroundColor: '#007BFF',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+          cursor: 'pointer',
+          zIndex: 1000
+        }}
+      >
+        ⬆ TOP
+      </button>
     </div>
   );
 }
